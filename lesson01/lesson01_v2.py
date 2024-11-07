@@ -8,7 +8,7 @@ import os
 
 load_dotenv()  
 
-response  = requests.get("http://xyz.ag3nts.org/")
+response  = requests.get("****************8/")
 soup = BeautifulSoup(response.text, "html.parser")
 
 
@@ -35,20 +35,20 @@ print(get_llm_answer(get_question(soup)))
 def submit_login(session: requests.Session, username: str, password: str, answer: str) -> requests.Response:
     data={"username": username, "password": password, "answer": answer}
     
-    return session.post("http://xyz.ag3nts.org/", data=data)
+    return session.post("****************8/", data=data)
 
 
 def login_process():
     session = requests.Session()
-    response = session.get("http://xyz.ag3nts.org/")
+    response = session.get("****************8/")
     soup = BeautifulSoup(response.text, "html.parser")
     
     question = get_question(soup)
     answer = get_llm_answer(question)
     login_response = submit_login(
         session, 
-        username="tester", 
-        password="574e112a", 
+        username="**********", 
+        password="************", 
         answer=answer
         )
     
