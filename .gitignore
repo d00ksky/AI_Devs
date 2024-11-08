@@ -8,3 +8,4 @@
 *.pptx
 /Lessons
 .env
+.markdownlint.json
