@@ -42,7 +42,7 @@ def submit_login(session: requests.Session, username: str, password: str, answer
         "password": password,
         "answer": answer
     }
-    return session.post("https://xyz.ag3nts.org/", data=data)
+    return session.post("*********************", data=data)
 
 def login_process():
     session = requests.Session()
