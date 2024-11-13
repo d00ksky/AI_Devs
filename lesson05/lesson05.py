@@ -9,6 +9,7 @@ import json
 KLUCZ = os.getenv("KLUCZ")
 
 
+
 def censor_text(text):
     prompt = f"""<<SYS>>
 You are a text censoring tool. Replace ALL personal information with 'CENZURA', including:
