@@ -11,3 +11,6 @@
 .markdownlint.json
 *.m4a
 Zrzut*
+*.zip
+*.mp3
+*.png

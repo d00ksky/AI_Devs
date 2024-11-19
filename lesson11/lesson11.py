@@ -15,7 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 if not os.path.exists("pliki_z_fabryki.zip"):
-    response_zip = requests.get("https://centrala.ag3nts.org/dane/pliki_z_fabryki.zip")
+    response_zip = requests.get("******************************************")
 
     with open("pliki_z_fabryki.zip", "wb") as file:
         file.write(response_zip.content)
@@ -185,7 +185,7 @@ json = {
             "answer": files_with_tags
         }
 
-finnish = requests.post("https://centrala.ag3nts.org/report", json=json)
+finnish = requests.post("****************************", json=json)
 
 print(finnish.json())
 
