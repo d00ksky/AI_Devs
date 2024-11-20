@@ -15,7 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 if not os.path.exists("pliki_z_fabryki.zip"):
-    response_zip = requests.get("******************************************")
+    response_zip = requests.get("************************************************")
 
     with open("pliki_z_fabryki.zip", "wb") as file:
         file.write(response_zip.content)
@@ -137,6 +137,8 @@ def tag_files():
             12. W tagach powinno być umieszczone każde słowo które może być istotne w lepszym wyszukiwaniu w przyszłości informacji i wydarzeń
             13. Tagi powinny być w formie mianownika (np. 'zatrzymanie' a nie 'zatrzymany')
             14. Czy widzisz coś o programowaniu? Jeśli tak, to dodaj tag 'programowanie' i inne tagi związane z tym zdarzeniem oraz językiem programowania (np. 'JavaScript').
+            15. W tagach dodaj także sektor z nazwy pliku. 
+            16. Nie używaj znaków _
             
             Zwróć wszystkie pasujące tagi, nie pomijaj żadnej istotnej informacji. Dodaj także inne tagi, które uważasz za istotne bazując na całej dostępnej wiedzy.
             
@@ -185,7 +187,7 @@ json = {
             "answer": files_with_tags
         }
 
-finnish = requests.post("****************************", json=json)
+finnish = requests.post("*******************************************", json=json)
 
 print(finnish.json())
 
