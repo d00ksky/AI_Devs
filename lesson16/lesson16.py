@@ -23,6 +23,29 @@ def openai_call(prompt):
     )
     return response.choices[0].message.content
 
+
+json_data = {
+    "task": "photos",
+    "apikey": KLUCZ,
+    "answer":"START"
+}
+
+
+first_response = requests.post(f"{REPORT_URL}", json=json_data)
+print(first_response.json())
+
+def get_image_url(data):
+    response = openai_call(f"Based on the following data: {data}, please provide ONLY the complete image URLs, one per line, without any additional text.")
+    print(response)
+    return response
+
+urls_list = []
+urls = get_image_url(first_response.json())
+for url in str(urls).split('\n'):
+    if url.strip():
+        urls_list.append(url.strip())
+print(urls_list)
+
 def download_image(url, filename):
     try:
         response = requests.get(url)
@@ -34,177 +57,85 @@ def download_image(url, filename):
             print(f"Failed to download {filename}: Status code {response.status_code}")
     except Exception as e:
         print(f"Error downloading {filename}: {str(e)}")
-
-'''
-Oto polecenia, które rozpoznaje automat:
-
-REPAIR NAZWA_PLIKU
-
-DARKEN NAZWA_PLIKU
-
-BRIGHTEN NAZWA_PLIKU
-'''
-
-json_data = {
-    "task": "photos",
-    "apikey": KLUCZ,
-    "answer":"START"
-}
-
-first_response = requests.post(f"{REPORT_URL}", json=json_data)
-print(first_response.json())
-
-def get_image_list(data):
-    response = openai_call(f"Based on the following data: {data}, please provide ONLY the image filenames, one per line, without any additional text or descriptions.")
-    image_list = [name.strip() for name in response.split('\n') if name.strip()]
-    return image_list
-
-def get_image_url(data):
-    response = openai_call(f"Based on the following data: {data}, please provide ONLY the complete image URLs, one per line, without any additional text.")
-    urls = [url.strip() for url in response.split('\n') if url.strip()]
-    return urls
-
-image_list = get_image_list(first_response.json())
-print(image_list)
-
-image_url = get_image_url(first_response.json())
-print(image_url)
-
-map_image_url = dict(zip(image_list, image_url))
-print(map_image_url)
-
-for image_name, image_url in map_image_url.items():
-    print(image_name, image_url)
-    download_image(image_url, image_name)
-
-def describe_image(image_data, is_file=True):
-    try:
-        # Handle binary image data properly
-        if is_file:
-            # Read image as binary
-            image_bytes = image_data
-            if isinstance(image_data, str):
-                with open(image_data, 'rb') as f:
-                    image_bytes = f.read()
-        else:
-            image_bytes = image_data
-            
-        # Convert to base64
-        base64_image = base64.b64encode(image_bytes).decode('utf-8')
         
-        response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
-            messages=[{
+for url in urls_list:
+    if url.split('/')[-1] not in os.listdir():
+        download_image(url, url.split('/')[-1])
+    else:
+        print(f"Image {url.split('/')[-1]} already exists")
+        
+def base64_encode(filename):
+    with open(filename, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    return encoded_string
+
+
+def openai_vision_call(prompt, base64_image):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Describe Barbara in the image. If image is too dark say only BRIGHTEN, if too bright say only DARKEN, if damaged say only REPAIR."},
+                    {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/png;base64,{base64_image}"
                         }
-                    }
+                    }   
                 ]
-            }],
-            max_tokens=500
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"Error in describe_image: {e}")
-        return "REPAIR"  # Default to REPAIR on errors
-
-def describe_image_mini(image_data):
-    base64_image = base64.b64encode(image_data).decode('utf-8')
-    response = client.chat.completions.create(
-        model="gpt-4o",
-            messages=[{"role": "user", "content": [
-            {"type": "text", "text": "Describe Barbara, person in image. Focus on her appearance."},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{base64_image}"
-                }
-            }
-        ]}]
+            }]  
     )
     return response.choices[0].message.content
 
-BARBARA_DESCRIPTION = {}
-def process_image(image_name, max_attempts=3, attempt=0):
-    try:
-        if attempt >= max_attempts:
-            print(f"Max attempts ({max_attempts}) reached for {image_name}")
-            return "REPAIR"
-        
-        # Get current image description
-        with open(image_name, 'rb') as f:
-            current_content = f.read()
-        description = describe_image(current_content)
-        print(f"Image description: {description}")
-        
-        if "REPAIR" in description:
-            print(f"Attempt {attempt + 1}: Repairing image...")
-            response = requests.post(f"{IMAGE_URL}", json={
-                "task": "photos",
-                "apikey": KLUCZ,
-                "answer": f"REPAIR {image_name}"
-            })
-            
-            if response.ok:
-                # Get the improved image URL/instructions from response
-                improved_info = response.json()
-                # Download the improved image
-                improved_response = requests.get(improved_info['url'])
-                if improved_response.ok:
-                    with open(f"improved_{image_name}", "wb") as f:
-                        f.write(improved_response.content)
-                    return process_image(f"improved_{image_name}", max_attempts, attempt + 1)
-                
-        elif "BRIGHTEN" in description:
-            print(f"Attempt {attempt + 1}: Brightening image...")
-            response = requests.post(f"{IMAGE_URL}", json={
-                "task": "photos",
-                "apikey": KLUCZ,
-                "answer": f"BRIGHTEN {image_name}"
-            })
-            
-            if response.ok:
-                improved_info = response.json()
-                improved_response = requests.get(improved_info['url'])
-                if improved_response.ok:
-                    with open(f"improved_{image_name}", "wb") as f:
-                        f.write(improved_response.content)
-                    return process_image(f"improved_{image_name}", max_attempts, attempt + 1)
-                    
-        elif "DARKEN" in description:
-            print(f"Attempt {attempt + 1}: Darkening image...")
-            response = requests.post(f"{IMAGE_URL}", json={
-                "task": "photos",
-                "apikey": KLUCZ,
-                "answer": f"DARKEN {image_name}"
-            })
-            
-            if response.ok:
-                improved_info = response.json()
-                improved_response = requests.get(improved_info['url'])
-                if improved_response.ok:
-                    with open(f"improved_{image_name}", "wb") as f:
-                        f.write(improved_response.content)
-                    return process_image(f"improved_{image_name}", max_attempts, attempt + 1)
-        
-        else:
-            BARBARA_DESCRIPTION[image_name] = description
-            return description
-            
-    except Exception as e:
-        print(f"Error in process_image: {e}")
-        return "REPAIR"
 
-for image_name in image_list:
-    final_description = process_image(image_name)
-    if final_description:
-        print(f"Final description for {image_name}: {final_description}")
-    else:
-        print(f"Failed to get proper description for {image_name}")
+def improve_image(image_name, action):
+    response = requests.post(f"{REPORT_URL}", json={
+        "task": "photos",
+        "apikey": KLUCZ,
+        "answer": f"{action} {image_name}" 
+    })
+    print(response.json())
+    return response.json()
+    
+    
+def is_valid_image(filename):
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+    return filename.lower().endswith(valid_extensions)
+barbara_description = []
+for image in os.listdir():
+    if is_valid_image(image):
+        base64_image = base64_encode(image)
+        response = openai_vision_call(f"Describe person in the image. You need to describe best you can. If image is too dark say only BRIGHTEN, if too bright say only DARKEN, if damaged say only REPAIR.", base64_image)
+        response = str(response)
+        if "BRIGHTEN" in response or "DARKEN" in response or "REPAIR" in response:
+            improved_image = improve_image(image, response)
+            print(f"Image {image} improved")
+            #print(improved_image)
+            new_image = openai_call(f"Provide only image name or URL without any additional text: {improved_image}")
+            print(new_image)
+            new_image_str = str(new_image)
+            if "http" in new_image_str:
+                download_image(new_image_str, new_image_str.split('/')[-1])
+                base64_image = base64_encode(new_image_str.split('/')[-1])
+                new_description = openai_vision_call(f"Describe the image. You need to describe best you can. Focus on details and appearance and distinguishing features and tattoos. Answer only with description in Polish.", base64_image)
+                print(new_description)
+                barbara_description.append(new_description)
+            else:
+                download_image(f"{IMAGE_URL}{new_image_str}", new_image_str)
+                base64_image = base64_encode(new_image_str)
+                new_description = openai_vision_call(f"Describe the image. You need to describe best you can. Focus on details and appearance and distinguishing features and tattoos. Answer only with description in Polish.", base64_image)
+                print(new_description)
+                barbara_description.append(new_description)
+        print(f"Response: {response}")
+        
+print(barbara_description)
+final_description = openai_call(f"Based on provided snippets of descriptions of images in which Barbara is present, please provide one complete description of Barbara in Polish. Focus on details and appearance and distinguishing features and tattoos with details. Descriptions: {barbara_description}")
+print(final_description)
 
-print(BARBARA_DESCRIPTION)
+final_answer = requests.post(f"{REPORT_URL}", json={
+    "task": "photos",
+    "apikey": KLUCZ,
+    "answer": f"Barbara: {final_description}"
+})
+print(final_answer.json())
