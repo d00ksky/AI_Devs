@@ -3,6 +3,7 @@ import requests
 import json
 from dotenv import load_dotenv
 from openai import OpenAI
+from fastapi import FastAPI
 
 
 load_dotenv()
@@ -32,4 +33,6 @@ Pracownik centrali wyśle na Twoje API metodą POST dane w formacie JSON w formi
 }
 
 """
+
+
 
