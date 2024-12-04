@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from lesson19 import send_url_to_central
+from utils import send_url_to_central, analyze_instructions
 from dotenv import load_dotenv
 
 app = FastAPI()
@@ -25,14 +25,21 @@ async def instructions(request: Request):
         data = await request.json()
         instruction = data.get("instruction")
         
+        if not instruction:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No instruction provided"}
+        )
+        
         print("\n=== Received Instruction ===")
         print(f"Raw data: {data}")
         print(f"Instruction: {instruction}")
         print("============================\n")
         
+        result = analyze_instructions(instruction)
+        
         return {
-            "received_instruction": instruction,
-            "raw_data": data
+            "answer": result
         }
     except Exception as e:
         print(f"Error: {str(e)}")
