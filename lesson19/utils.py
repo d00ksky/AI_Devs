@@ -1,13 +1,17 @@
 import json
 import os
-from typing import Dict, Any
 import requests
+from typing import Dict, Any
 from dotenv import load_dotenv
 from openai import OpenAI
-
+import logging
+logger = logging.getLogger("myapp")
+logger.setLevel(logging.DEBUG)
+# Add a simple stream handler
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 load_dotenv()
-
-
 
 KLUCZ = os.getenv("KLUCZ")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY2")
@@ -15,45 +19,27 @@ REPORT_URL = os.getenv("REPORT_URL")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+async def send_url_to_central(ngrok_url: str) -> Dict[str, Any]:
+    logger  .debug("\n=== REGISTERING URL ===")
+    if not REPORT_URL or not KLUCZ:
+        logger.debug("Missing REPORT_URL or KLUCZ!")
+        return {"error": "Missing configuration"}
 
-def send_url_to_central(ngrok_url: str) -> Dict[str, Any]:
-    """
-    Send the URL to the central server.
-    """
-    load_dotenv(override=True)
-
-    if not REPORT_URL:
-        print("Error: REPORT_URL not found in environment variables")
-        return {"error": "REPORT_URL not configured"}
-
+    url = f"{ngrok_url}/instructions"
+    logger.debug(f"Registering URL: {url}")
+    logger.debug(f"REPORT_URL: {REPORT_URL}")
+    
     payload = {
         "apikey": KLUCZ,
-        "answer": f"{ngrok_url}/instructions",
-        "task": "webhook"
+        "answer": url,
+        "task": "webhook",
     }
+    logger.debug(f"Sending payload: {payload}")
 
-    print("""\n=== Sending to Central ===\n""")
-    print(f"URL: {REPORT_URL}")
-    print(f"Payload: {payload}")
-
-    try:
-        response = requests.post(
-            str(REPORT_URL),  # Cast to str to satisfy type checker
-            json=payload,
-            timeout=30
-        )
-
-        print(f"Status Code: {response.status_code}")
-        print(f"Raw Response: {response.text}")
-
-        return response.json()
-    except requests.exceptions.JSONDecodeError:
-        print("Warning: Response was not valid JSON")
-        return {"error": "Invalid JSON response", "raw_response": response.text}
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return {"error": str(e)}
-
+    send = requests.post(REPORT_URL, json=payload)
+    logger.debug(f"Response status: {send.status_code}")
+    logger.debug(f"Response body: {send.text}")
+    return send.json()
 
 prompt = """Jesteś asystentem nawigacyjnym. Otrzymasz instrukcje poruszania się po siatce/planszy.
 Twoim zadaniem jest:
@@ -69,35 +55,37 @@ Zasady:
 
 Mapa (siatka 4x4, numerowana od 0 do 3, gdzie [0,0] to lewy górny róg):
 [0,0]: Znacznik lokalizacji (pin)
-[0,1]: Trawa
+[0,1]: trawa
 [0,2]: Pojedyncze drzewo
-[0,3]: Dom z dachem
-[1,0]: Trawa
+[0,3]: Dom
+[1,0]: trawa
 [1,1]: Wiatrak
-[1,2]: Pusta przestrzeń
-[1,3]: Pusta przestrzeń
-[2,0]: Trawa
-[2,1]: Pusta przestrzeń
-[2,2]: Skały/góry
+[1,2]: trawa
+[1,3]: trawa
+[2,0]: trawa
+[2,1]: trawa
+[2,2]: Skały
 [2,3]: Dwa drzewa
 [3,0]: Wysokie góry
-[3,1]: Pusta przestrzeń
-[3,2]: Samochód (widok z góry)
-[3,3]: Wzgórze
+[3,1]: Wysokie góry
+[3,2]: Samochód
+[3,3]: Jaskinia
 
 Poruszasz się po tej siatce, gdzie:
 - Północ oznacza ruch w górę
 - Południe oznacza ruch w dół
 - Wschód oznacza ruch w prawo
-- Zachód oznacza ruch w lewo"""
+- Zachód oznacza ruch w lewo
+
+Na początku masz znacznik lokalizacji (pin) w pozycji [0,0]"""
 
 def analyze_instructions(instructions: str) -> str:
     response = client.chat.completions.create(
         model="chatgpt-4o-latest",
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": instructions}]
     )
-    print(response.choices[0].message.content)
     result = response.choices[0].message.content
+    logger.debug(f"Analyzed result: {result}")
     return str(result)
 
-print(analyze_instructions("Idź 3 kroki na północ, następnie 2 na wschód"))
+
