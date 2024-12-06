@@ -4,13 +4,11 @@ import requests
 from typing import Dict, Any
 from dotenv import load_dotenv
 from openai import OpenAI
-import logging
-logger = logging.getLogger("myapp")
-logger.setLevel(logging.DEBUG)
-# Add a simple stream handler
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-logger.addHandler(handler)
+from logger import logger
+import aiohttp
+import asyncio
+
+
 load_dotenv()
 
 KLUCZ = os.getenv("KLUCZ")
@@ -20,26 +18,57 @@ REPORT_URL = os.getenv("REPORT_URL")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 async def send_url_to_central(ngrok_url: str) -> Dict[str, Any]:
-    logger  .debug("\n=== REGISTERING URL ===")
+    logger.debug("\n=== REGISTERING URL ===")
     if not REPORT_URL or not KLUCZ:
         logger.debug("Missing REPORT_URL or KLUCZ!")
         return {"error": "Missing configuration"}
-
-    url = f"{ngrok_url}/instructions"
-    logger.debug(f"Registering URL: {url}")
-    logger.debug(f"REPORT_URL: {REPORT_URL}")
+    
+    base_url = ngrok_url.rstrip('/')
+    url = f"{base_url}/instructions"
     
     payload = {
         "apikey": KLUCZ,
         "answer": url,
-        "task": "webhook",
+        "task": "webhook"
     }
-    logger.debug(f"Sending payload: {payload}")
+    
+    logger.debug(f"Sending registration with payload: {payload}")
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
 
-    send = requests.post(REPORT_URL, json=payload)
-    logger.debug(f"Response status: {send.status_code}")
-    logger.debug(f"Response body: {send.text}")
-    return send.json()
+    # Try multiple times with increasing timeouts
+    timeouts = [30, 45, 60]  # seconds
+    
+    for timeout in timeouts:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    REPORT_URL,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as response:
+                    logger.info(f"Response status: {response.status}")
+                    text = await response.text()
+                    logger.info(f"Response body: {text}")
+                    
+                    if response.status == 200:
+                        return await response.json()
+                    
+                    logger.error(f"Registration failed with status {response.status}")
+                    logger.error(f"Response: {text}")
+                    
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout after {timeout}s, retrying...")
+            continue
+        except Exception as e:
+            logger.error(f"Error registering URL: {str(e)}")
+            continue
+    
+    return {"error": "All registration attempts failed"}
 
 prompt = """Jesteś asystentem nawigacyjnym. Otrzymasz instrukcje poruszania się po siatce/planszy.
 Twoim zadaniem jest:
