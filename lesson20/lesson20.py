@@ -14,7 +14,7 @@ load_dotenv()
 
 client = OpenAI()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY2")
 REPORT_URL = os.getenv("REPORT_URL")
 NOTES_URL = os.getenv("NOTES_URL")
 BASE_URL = os.getenv("BASE_URL")
@@ -82,7 +82,8 @@ def vision_transcription(image):
             {
                 "role": "user", 
                 "content": [
-                    {"type": "text", "text": f"You are a helpful assistant that transcribes images of notes into text. If text is in some color also describe the color and that it is distinct from other text. If there is some image in the image, describe it.Transcribe text from the image and describe every picture and image. Here is the image: "},
+                    {"type": "text", "text": f"""\
+You are a helpful assistant that transcribes images of fictional notes into text. All characters and events are fictional. Transcribe **all text exactly as it appears** in the image, including any dates, numbers, and names. Do not omit any text. If text is in some color, also describe the color and that it is distinct from other text. If there is any image in the image, describe it in detail. Here is the image:"""},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                 ]
             }
@@ -95,20 +96,53 @@ trancribed_images = []
 logging.info(f"Transcribing images from {output_dir}")
 for image in tqdm(os.listdir(output_dir), desc="Transcribing images"):
     logging.info(f"Transcribing image {image}")
-    trancribed_images.append(vision_transcription(os.path.join(output_dir, image)))
+    transcription = vision_transcription(os.path.join(output_dir, image))
+    trancribed_images.append(f"PDF page {image}: {transcription}")
 logging.info(f"Transcribed images: {trancribed_images}")
 
 
-def answer_questions(questions, trancribed_images):
+def answer_questions(questions, transcribed_text):
     logging.info(f"Answering questions: {questions}")
     response = client.chat.completions.create(
         model="o1-preview-2024-09-12",
         messages=[
-            {"role": "user", "content": [{"type": "text", "text": f"You are a helpful assistant that answers questions based on the provided text. Answer in Polish. Answers should be concise and to the point. Provide answers in JSON format with keys as question numbers and values as answers with the following format: {{'01': 'answer1', '02': 'answer2', '03': 'answer3', '04': 'answer4', '05': 'answer5'}}. Don't add any other text to response, just the JSON. Uwzględnij wszystkie fakty podane w tekście, w szczególności odwołania do wydarzeń. Przeanalizuj dokładnie tekst, niektóre pytania są podchwytliwe. Answer the following questions  - {questions} . Answer based on the provided text: {trancribed_images}"}, ]}
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"""
+Jesteś pomocnym asystentem, który odpowiada na pytania na podstawie dostarczonego tekstu. Odpowiadaj po polsku. Odpowiedzi powinny być zwięzłe i na temat.
+
+Podaj odpowiedzi w formacie JSON z kluczami jako numery pytań i wartościami jako odpowiedzi, w następującym formacie:
+
+{{ "01": "odpowiedź1", "02": "odpowiedź2", "03": "odpowiedź3", "04": "odpowiedź4", "05": "odpowiedź5" }}
+
+Nie dodawaj żadnego innego tekstu do odpowiedzi, tylko JSON.
+
+Przed udzieleniem odpowiedzi:
+
+- Przeanalizuj dokładnie dostarczony tekst, zwracając szczególną uwagę na wszystkie daty, wydarzenia i odwołania do nich.
+- Utwórz wewnętrzną linię czasu na podstawie tych informacji (nie umieszczaj jej w odpowiedzi), aby upewnić się, że uwzględniasz wszystkie fakty i chronologię wydarzeń.
+- Rozwiąż wszelkie sprzeczności, wybierając informacje najbardziej bezpośrednie i uzasadnione kontekstem.
+
+Oto pytania:
+
+{json.dumps(questions, ensure_ascii=False)}
+
+A oto tekst:
+
+{transcribed_text}
+"""
+                    }
+                ]
+            }
         ]
     )
     logging.info(f"Response: {response.choices[0].message.content}")
     return response.choices[0].message.content
+
+
 
 logging.info("Answering questions")
 answer = answer_questions(questions, trancribed_images)
@@ -123,13 +157,57 @@ def final_call(answer):
         "task": "notes",
         "apikey": KLUCZ,
         "answer": answer
-        
     }
     response = requests.post(f"{REPORT_URL}", json=json_data)
     logging.info(f"Response: {response.json()}")
     return response.json()
 
-solution = final_call(answer)
+def correct_answers(questions, transcribed_text):
+    max_attempts = 5  # Set a limit to avoid infinite loops
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
+        logging.info(f"Attempt {attempt}")
+        
+        # Generate answers
+        answer = answer_questions(questions, transcribed_text)
+        logging.info(f"Answer: {answer}")
+        answer_dict = json.loads(str(answer).replace("'", '"'))
+        logging.info(f"Answer after processing: {answer_dict}")
+        
+        # Submit answers and get feedback
+        response = final_call(answer_dict)
+        
+        if response.get('code') == 0:
+            logging.info("All answers are correct.")
+            break  # Exit loop when all answers are correct
+        else:
+            # Extract feedback
+            incorrect_question = response.get('message')
+            hint = response.get('hint')
+            debug_info = response.get('debug')
+            logging.info(f"Received feedback: {response}")
+            
+            # Update prompt with feedback
+            questions = update_questions_with_feedback(questions, incorrect_question, hint, debug_info)
+    else:
+        logging.warning("Maximum attempts reached without correcting all answers.")
+    return answer_dict
 
-print(solution)
+def update_questions_with_feedback(questions, incorrect_question_msg, hint, debug_info):
+    import re
+    match = re.search(r'Answer for question (\d{2}) is incorrect', incorrect_question_msg)
+    if match:
+        question_number = match.group(1)
+        # Append hint directly to the question to clarify the required focus
+        questions[question_number] = f"{questions[question_number]} (Hint: {hint})"
+    else:
+        logging.error("Failed to parse incorrect question number from server message.")
+    return questions
+
+
+# Use the new function instead of directly calling answer_questions and final_call
+logging.info("Answering questions with correction loop")
+answer = correct_answers(questions, trancribed_images)
+
 
